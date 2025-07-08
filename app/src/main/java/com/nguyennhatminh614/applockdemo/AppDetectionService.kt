@@ -9,6 +9,7 @@ import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ResolveInfo
 import android.os.Build
 import android.os.Handler
@@ -16,9 +17,11 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.nguyennhatminh614.applockdemo.receiver.ScreenReceiver
 
 class AppDetectionService : Service() {
-    
+
+    private var screenReceiver: ScreenReceiver? = null
     private val handler = Handler(Looper.getMainLooper())
     private var isRunning = false
     private var currentApp: String? = null
@@ -34,7 +37,9 @@ class AppDetectionService : Service() {
     companion object {
         private const val TAG = "AppDetectionService"
         private const val CHECK_INTERVAL = 500L // 0.5 giây
-        
+
+        val ACTION_CHECK_CURRENT_APP = "ACTION_CHECK_CURRENT_APP"
+
         // Notification constants
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "app_detection_channel"
@@ -55,7 +60,20 @@ class AppDetectionService : Service() {
             }
         }
     }
-    
+
+    private fun setupScreenReceiver() {
+        // Register screen receiver
+        screenReceiver = ScreenReceiver()
+        val intentFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_USER_PRESENT)
+            addAction(Intent.ACTION_BOOT_COMPLETED)
+            addAction(Intent.ACTION_LOCKED_BOOT_COMPLETED)
+        }
+        registerReceiver(screenReceiver, intentFilter)
+    }
+
     override fun onCreate() {
         super.onCreate()
         usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
@@ -67,6 +85,9 @@ class AppDetectionService : Service() {
         
         // Kiểm tra quyền Usage Stats
         checkUsageStatsPermission()
+
+        //Detect receiver boot
+        setupScreenReceiver()
         
         // Lấy danh sách launcher hệ thống
         systemLauncherPackages = getSystemLauncherPackages()
@@ -137,6 +158,18 @@ class AppDetectionService : Service() {
 
         startForeground(NOTIFICATION_ID, notification)
         
+        // Kiểm tra command từ intent
+        //val command = intent?.getStringExtra("command")
+        when (intent?.action) {
+            ACTION_CHECK_CURRENT_APP -> {
+                Log.d(TAG, "Received command to check current app")
+                // Delay một chút để đảm bảo hệ thống đã ổn định sau boot
+                handler.postDelayed({
+                    checkCurrentApp(isForceShow = true)
+                }, 2000)
+            }
+        }
+        
         startDetection()
         return START_STICKY // Service sẽ được khởi động lại nếu bị kill
     }
@@ -148,7 +181,7 @@ class AppDetectionService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         stopDetection()
-        stopForeground(true) // Dừng foreground service và xóa notification
+        screenReceiver?.let { unregisterReceiver(it) }
         Log.d(TAG, "AppDetectionService destroyed")
     }
     
@@ -171,7 +204,7 @@ class AppDetectionService : Service() {
         Log.d(TAG, "App detection stopped")
     }
     
-    private fun checkCurrentApp() {
+    private fun checkCurrentApp(isForceShow: Boolean = false) {
         try {
             val currentTime = System.currentTimeMillis()
             val startTime = currentTime - 60000 // Tăng lên 60 giây để có nhiều dữ liệu hơn
@@ -209,7 +242,12 @@ class AppDetectionService : Service() {
             }
             
             lastEventPackage?.let { packageName ->
-                if (packageName != currentApp && packageName != this.packageName) {
+                val isCheckCurrentPackage = if (isForceShow) {
+                    true
+                } else {
+                    packageName != currentApp
+                }
+                if (isCheckCurrentPackage && packageName != this.packageName) {
                     currentApp = packageName
                     val appName = getAppName(packageName)
                     Log.i(TAG, "Current app changed to: $appName ($packageName)")
