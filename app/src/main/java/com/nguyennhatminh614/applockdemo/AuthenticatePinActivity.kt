@@ -2,12 +2,14 @@ package com.nguyennhatminh614.applockdemo
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.andrognito.pinlockview.IndicatorDots
 import com.andrognito.pinlockview.PinLockListener
 import com.andrognito.pinlockview.PinLockView
+import kotlin.system.exitProcess
 
 /**
  * Activity for PIN authentication
@@ -27,6 +29,21 @@ class AuthenticatePinActivity : AppCompatActivity() {
     private var attemptCount = 0
     private val maxAttempts = 3
     
+    companion object {
+        private const val TAG = "AuthenticatePinActivity"
+        private var currentInstance: AuthenticatePinActivity? = null
+        
+        /**
+         * Thông báo cho activity hiện tại rằng launcher đã được detect
+         */
+        fun notifyLauncherDetected() {
+            currentInstance?.let { activity ->
+                Log.d(TAG, "Launcher detected, finishing AuthenticatePinActivity")
+                activity.finishAndRemoveTask()
+            }
+        }
+    }
+    
     private val pinLockListener = object : PinLockListener {
         override fun onComplete(pin: String) {
             if (pinManager.validatePin(pin)) {
@@ -37,10 +54,7 @@ class AuthenticatePinActivity : AppCompatActivity() {
                 AppLockManager.getInstance().resetBackgroundTimer()
                 
                 // Navigate to main activity
-                val intent = Intent(this@AuthenticatePinActivity, MainActivity::class.java)
-                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                startActivity(intent)
-                finish()
+                finishAndRemoveTask()
             } else {
                 // PIN is incorrect
                 attemptCount++
@@ -53,7 +67,7 @@ class AuthenticatePinActivity : AppCompatActivity() {
                     
                     // You can implement additional security measures here
                     // like temporary lockout, biometric fallback, etc.
-                    finish()
+                    finishAndRemoveTask()
                 } else {
                     val remainingAttempts = maxAttempts - attemptCount
                     showError("PIN không đúng. Còn lại $remainingAttempts lần thử.")
@@ -77,10 +91,15 @@ class AuthenticatePinActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_authenticate_pin)
         
+        // Đặt instance hiện tại
+        currentInstance = this
+        
         initViews()
         setupPinLockView()
         
         pinManager = PinManager(this)
+        
+        Log.d(TAG, "AuthenticatePinActivity created")
     }
     
     private fun initViews() {
@@ -141,6 +160,15 @@ class AuthenticatePinActivity : AppCompatActivity() {
     override fun onBackPressed() {
         // Prevent going back from authentication screen
         // You can customize this behavior based on your app's requirements
-        moveTaskToBack(true)
+        //moveTaskToBack(true)
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        // Xóa instance hiện tại
+        if (currentInstance == this) {
+            currentInstance = null
+        }
+        Log.d(TAG, "AuthenticatePinActivity destroyed")
     }
 }

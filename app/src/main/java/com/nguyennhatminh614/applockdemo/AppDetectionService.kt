@@ -9,6 +9,7 @@ import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ResolveInfo
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -23,6 +24,7 @@ class AppDetectionService : Service() {
     private var currentApp: String? = null
     private lateinit var usageStatsManager: UsageStatsManager
     private lateinit var appLockConfig: AppLockConfig
+    private var systemLauncherPackages: Set<String> = emptySet()
 
     // Interface để lắng nghe sự thay đổi ứng dụng
     interface AppChangeListener {
@@ -65,6 +67,9 @@ class AppDetectionService : Service() {
         
         // Kiểm tra quyền Usage Stats
         checkUsageStatsPermission()
+        
+        // Lấy danh sách launcher hệ thống
+        systemLauncherPackages = getSystemLauncherPackages()
     }
     
     private fun createNotificationChannel() {
@@ -212,6 +217,13 @@ class AppDetectionService : Service() {
                     // Thông báo cho listener
                     appChangeListener?.onAppChanged(packageName, appName)
                     
+                    // Kiểm tra nếu latest foreground task là launcher hệ thống
+                    if (isSystemLauncher(packageName)) {
+                        Log.d(TAG, "System launcher detected: $appName ($packageName)")
+                        // Thông báo cho AuthenticatePinActivity để đóng nếu đang mở
+                        AuthenticatePinActivity.notifyLauncherDetected()
+                    }
+                    
                     // Kiểm tra xem ứng dụng có cần khóa không
                     if (appLockConfig.isAppLockEnabled() && appLockConfig.isAppLocked(packageName)) {
                         Log.d(TAG, "App $appName needs to be locked")
@@ -284,5 +296,37 @@ class AppDetectionService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Error launching authentication", e)
         }
+    }
+    
+    /**
+     * Lấy danh sách các launcher hệ thống
+     */
+    private fun getSystemLauncherPackages(): Set<String> {
+        val launcherPackages = mutableSetOf<String>()
+        
+        try {
+            val intent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+            }
+            
+            val resolveInfos: List<ResolveInfo> = packageManager.queryIntentActivities(intent, 0)
+            
+            for (resolveInfo in resolveInfos) {
+                val packageName = resolveInfo.activityInfo.packageName
+                launcherPackages.add(packageName)
+                Log.d(TAG, "Found launcher package: $packageName")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting launcher packages", e)
+        }
+        
+        return launcherPackages
+    }
+    
+    /**
+     * Kiểm tra xem package có phải là launcher hệ thống không
+     */
+    private fun isSystemLauncher(packageName: String): Boolean {
+        return systemLauncherPackages.contains(packageName)
     }
 }

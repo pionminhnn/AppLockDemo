@@ -39,11 +39,14 @@
             android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AppLockDemo" />
-            
+
         <activity
             android:name=".AuthenticatePinActivity"
+            android:excludeFromRecents="true"
             android:exported="false"
+            android:launchMode="singleTask"
             android:screenOrientation="portrait"
+            android:taskAffinity=""
             android:theme="@style/Theme.AppLockDemo" />
             
         <!-- Service để detect ứng dụng đang chạy -->
@@ -51,6 +54,7 @@
             android:name=".AppDetectionService"
             android:enabled="true"
             android:exported="true"
+            android:directBootAware="true"
             android:foregroundServiceType="dataSync" />
     </application>
 
