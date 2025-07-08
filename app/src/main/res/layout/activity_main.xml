@@ -68,4 +68,24 @@
         android:background="@drawable/button_outline"
         android:textColor="@color/error_color" />
 
+    <Button
+        android:id="@+id/btnCheckPermissions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Kiểm tra quyền và Khởi động Service"
+        android:textSize="16sp"
+        android:layout_marginBottom="16dp"
+        android:background="@drawable/button_circle"
+        android:textColor="@color/white" />
+
+    <Button
+        android:id="@+id/btnTestService"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Test Service Detection"
+        android:textSize="16sp"
+        android:layout_marginBottom="16dp"
+        android:background="@drawable/button_outline"
+        android:textColor="@color/primary_color" />
+
 </LinearLayout>

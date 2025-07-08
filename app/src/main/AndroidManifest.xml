@@ -2,9 +2,24 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Quyền vẽ overlay trên các ứng dụng khác -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    
+    <!-- Quyền truy cập thống kê sử dụng ứng dụng -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" 
+        tools:ignore="ProtectedPermissions" />
+    
+    <!-- Quyền truy cập thông tin về các ứng dụng đang chạy -->
+    <uses-permission android:name="android.permission.GET_TASKS" />
+    
+    <!-- Quyền chạy foreground service -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
     <application
         android:name=".AppLockApplication"
         android:allowBackup="true"
+        android:directBootAware="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
@@ -33,6 +48,13 @@
             android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AppLockDemo" />
+            
+        <!-- Service để detect ứng dụng đang chạy -->
+        <service
+            android:name=".AppDetectionService"
+            android:enabled="true"
+            android:exported="true"
+            android:foregroundServiceType="dataSync" />
     </application>
 
 </manifest>

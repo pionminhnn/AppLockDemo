@@ -2,15 +2,19 @@ package com.nguyennhatminh614.applockdemo
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.Button
+import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), AppDetectionService.AppChangeListener {
     
     private lateinit var pinManager: PinManager
+    private lateinit var permissionManager: PermissionManager
+    private var isServiceStarted = false
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -18,6 +22,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         
         pinManager = PinManager(this)
+        permissionManager = PermissionManager(this)
         
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -26,6 +31,7 @@ class MainActivity : AppCompatActivity() {
         }
         
         setupButtons()
+        checkPermissionsAndStartService()
     }
     
     private fun setupButtons() {
@@ -61,6 +67,18 @@ class MainActivity : AppCompatActivity() {
             // Manually trigger app lock
             AppLockManager.getInstance().lockApp(this)
         }
+        
+        // Thêm button để kiểm tra quyền
+        val checkPermissionsButton = findViewById<Button>(R.id.btnCheckPermissions)
+        checkPermissionsButton?.setOnClickListener {
+            checkPermissionsAndStartService()
+        }
+        
+        // Thêm button để test service
+        val testServiceButton = findViewById<Button>(R.id.btnTestService)
+        testServiceButton?.setOnClickListener {
+            testServiceDetection()
+        }
     }
     
     override fun onResume() {
@@ -79,5 +97,72 @@ class MainActivity : AppCompatActivity() {
         } else {
             "Chưa thiết lập PIN"
         }
+    }
+    
+    private fun checkPermissionsAndStartService() {
+        permissionManager.checkAndRequestAllPermissions {
+            startAppDetectionService()
+        }
+    }
+    
+    private fun startAppDetectionService() {
+        if (!isServiceStarted) {
+            val serviceIntent = Intent(this, AppDetectionService::class.java)
+            startService(serviceIntent)
+            isServiceStarted = true
+            
+            // Đăng ký listener để nhận thông báo khi ứng dụng thay đổi
+            AppDetectionService.setAppChangeListener(this)
+            
+            Toast.makeText(this, "Service phát hiện ứng dụng đã được khởi động", Toast.LENGTH_SHORT).show()
+            Log.d("MainActivity", "AppDetectionService started")
+        }
+    }
+    
+    private fun testServiceDetection() {
+        if (!permissionManager.hasUsageStatsPermission()) {
+            Toast.makeText(this, "Chưa có quyền Usage Stats! Vui lòng cấp quyền trước.", Toast.LENGTH_LONG).show()
+            return
+        }
+        
+        Toast.makeText(this, "Đang test service detection... Hãy chuyển sang app khác và quay lại", Toast.LENGTH_LONG).show()
+        Log.d("MainActivity", "Testing service detection...")
+        
+        // Trigger manual check nếu service đã chạy
+        if (isServiceStarted) {
+            Log.d("MainActivity", "Service is running, manual detection should work")
+        } else {
+            Toast.makeText(this, "Service chưa được khởi động! Hãy khởi động service trước.", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        
+        permissionManager.handleActivityResult(requestCode) { hasPermission ->
+            if (hasPermission) {
+                Toast.makeText(this, "Quyền đã được cấp", Toast.LENGTH_SHORT).show()
+                checkPermissionsAndStartService()
+            } else {
+                Toast.makeText(this, "Cần cấp quyền để ứng dụng hoạt động", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    
+    // Implement AppChangeListener
+    override fun onAppChanged(packageName: String, appName: String) {
+        runOnUiThread {
+            Log.d("MainActivity", "App changed to: $appName ($packageName)")
+            Toast.makeText(this, "Ứng dụng hiện tại: $appName", Toast.LENGTH_SHORT).show()
+            
+            // Ở đây bạn có thể thêm logic để kiểm tra xem ứng dụng có cần khóa không
+            // Ví dụ: nếu ứng dụng trong danh sách cần khóa thì hiển thị màn hình PIN
+        }
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        // Hủy đăng ký listener
+        AppDetectionService.setAppChangeListener(null)
     }
 }
