@@ -1,3 +1,30 @@
 <resources>
     <string name="app_name">AppLockDemo</string>
+    
+    <!-- Setup PIN -->
+    <string name="setup_pin_title">Thiết lập PIN</string>
+    <string name="setup_pin_subtitle">Tạo mã PIN 4 chữ số để bảo vệ ứng dụng của bạn</string>
+    <string name="confirm_pin_title">Xác nhận PIN</string>
+    <string name="confirm_pin_subtitle">Nhập lại mã PIN để xác nhận</string>
+    <string name="pin_mismatch">Mã PIN không khớp. Vui lòng thử lại.</string>
+    <string name="pin_setup_success">Thiết lập PIN thành công!</string>
+    <string name="skip">Bỏ qua</string>
+    
+    <!-- Verify PIN -->
+    <string name="verify_pin_title">Nhập PIN</string>
+    <string name="verify_pin_subtitle">Nhập mã PIN để tiếp tục</string>
+    <string name="pin_incorrect">Mã PIN không đúng. Vui lòng thử lại.</string>
+    <string name="forgot_pin">Quên mã PIN?</string>
+    <string name="pin_verified_success">Xác thực thành công!</string>
+    
+    <!-- General -->
+    <string name="try_again">Thử lại</string>
+    <string name="cancel">Hủy</string>
+    <string name="ok">OK</string>
+    <string name="reset">Đặt lại</string>
+    
+    <!-- App Lock -->
+    <string name="app_locked_message">Ứng dụng đã bị khóa do không hoạt động trong thời gian dài</string>
+    <string name="forgot_pin_dialog_title">Quên PIN?</string>
+    <string name="forgot_pin_dialog_message">Bạn có muốn đặt lại PIN không? Điều này sẽ xóa PIN hiện tại.</string>
 </resources>

@@ -21,4 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "AppLockDemo"
 include(":app")
- 
+include(":pinlockview")

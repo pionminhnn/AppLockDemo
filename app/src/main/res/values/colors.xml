@@ -2,4 +2,21 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    
+    <!-- PIN Lock Colors -->
+    <color name="primary_color">#2196F3</color>
+    <color name="background_color">#FFFFFF</color>
+    <color name="text_primary">#212121</color>
+    <color name="text_secondary">#757575</color>
+    <color name="error_color">#F44336</color>
+    
+    <!-- Button Colors -->
+    <color name="button_normal">#F5F5F5</color>
+    <color name="button_pressed">#E0E0E0</color>
+    <color name="button_border">#BDBDBD</color>
+    <color name="button_outline_pressed">#E3F2FD</color>
+    
+    <!-- Dot Colors -->
+    <color name="dot_empty_color">#BDBDBD</color>
+    <color name="dot_filled_color">#2196F3</color>
 </resources>
