@@ -8,10 +8,7 @@
     <!-- Quyền truy cập thống kê sử dụng ứng dụng -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" 
         tools:ignore="ProtectedPermissions" />
-    
-    <!-- Quyền truy cập thông tin về các ứng dụng đang chạy -->
-    <uses-permission android:name="android.permission.GET_TASKS" />
-    
+
     <!-- Quyền chạy foreground service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
