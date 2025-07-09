@@ -12,7 +12,11 @@
     <!-- Quyền chạy foreground service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    
+
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
     <!-- Quyền nhận broadcast khi khởi động lại máy -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
@@ -52,11 +56,17 @@
             android:taskAffinity=""
             android:theme="@style/Theme.AppLockDemo" />
             
+        <activity
+            android:name=".SelectAppsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AppLockDemo" />
+            
         <!-- Service để detect ứng dụng đang chạy -->
         <service
             android:name=".AppDetectionService"
             android:enabled="true"
-            android:exported="true"
+            android:exported="false"
             android:directBootAware="true"
             android:foregroundServiceType="dataSync" />
 

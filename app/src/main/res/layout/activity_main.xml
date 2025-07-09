@@ -49,6 +49,16 @@
         android:textColor="@color/primary_color" />
 
     <Button
+        android:id="@+id/btnSelectApps"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Chọn App cần Lock"
+        android:textSize="16sp"
+        android:layout_marginBottom="16dp"
+        android:background="@drawable/button_circle"
+        android:textColor="@color/white" />
+
+    <Button
         android:id="@+id/btnLockApp"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

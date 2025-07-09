@@ -39,6 +39,7 @@ class MainActivity : AppCompatActivity(), AppDetectionService.AppChangeListener 
         val setupPinButton = findViewById<Button>(R.id.btnSetupPin)
         val authenticatePinButton = findViewById<Button>(R.id.btnAuthenticatePin)
         val clearPinButton = findViewById<Button>(R.id.btnClearPin)
+        val selectAppsButton = findViewById<Button>(R.id.btnSelectApps)
         val lockAppButton = findViewById<Button>(R.id.btnLockApp)
         
         setupPinButton?.setOnClickListener {
@@ -61,6 +62,11 @@ class MainActivity : AppCompatActivity(), AppDetectionService.AppChangeListener 
             pinManager.clearPin()
             android.widget.Toast.makeText(this, "PIN đã được xóa", android.widget.Toast.LENGTH_SHORT).show()
             updatePinStatus()
+        }
+        
+        selectAppsButton?.setOnClickListener {
+            val intent = Intent(this, SelectAppsActivity::class.java)
+            startActivity(intent)
         }
         
         lockAppButton?.setOnClickListener {

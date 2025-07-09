@@ -27,6 +27,7 @@ class AppDetectionService : Service() {
     private var currentApp: String? = null
     private lateinit var usageStatsManager: UsageStatsManager
     private lateinit var appLockConfig: AppLockConfig
+    private lateinit var lockedAppsManager: LockedAppsManager
     private var systemLauncherPackages: Set<String> = emptySet()
 
     // Interface để lắng nghe sự thay đổi ứng dụng
@@ -78,6 +79,7 @@ class AppDetectionService : Service() {
         super.onCreate()
         usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         appLockConfig = AppLockConfig(this)
+        lockedAppsManager = LockedAppsManager.getInstance(this)
         Log.d(TAG, "AppDetectionService created")
         
         // Tạo notification channel
@@ -263,7 +265,7 @@ class AppDetectionService : Service() {
                     }
                     
                     // Kiểm tra xem ứng dụng có cần khóa không
-                    if (appLockConfig.isAppLockEnabled() && appLockConfig.isAppLocked(packageName)) {
+                    if (appLockConfig.isAppLockEnabled() && lockedAppsManager.isAppLocked(packageName)) {
                         Log.d(TAG, "App $appName needs to be locked")
                         lockApp(packageName, appName)
                     }
