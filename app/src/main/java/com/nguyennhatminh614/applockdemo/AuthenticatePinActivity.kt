@@ -6,9 +6,11 @@ import android.util.Log
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.andrognito.pinlockview.IndicatorDots
 import com.andrognito.pinlockview.PinLockListener
 import com.andrognito.pinlockview.PinLockView
+import kotlinx.coroutines.launch
 import kotlin.system.exitProcess
 
 /**
@@ -25,9 +27,15 @@ class AuthenticatePinActivity : AppCompatActivity() {
     private lateinit var forgotPinTextView: TextView
     
     private lateinit var pinManager: PinManager
+    private lateinit var intruderDetectionManager: IntruderDetectionManager
+    private lateinit var cameraManager: CameraManager
     
     private var attemptCount = 0
     private val maxAttempts = 3
+    
+    // Thông tin về app hiện tại (được truyền qua Intent)
+    private var currentAppPackageName: String? = null
+    private var currentAppName: String? = null
     
     companion object {
         private const val TAG = "AuthenticatePinActivity"
@@ -58,6 +66,9 @@ class AuthenticatePinActivity : AppCompatActivity() {
             } else {
                 // PIN is incorrect
                 attemptCount++
+                
+                // Kiểm tra xem có cần chụp ảnh kẻ đột nhập không
+                checkAndCaptureIntruderPhoto()
                 
                 if (attemptCount >= maxAttempts) {
                     // Max attempts reached
@@ -98,6 +109,12 @@ class AuthenticatePinActivity : AppCompatActivity() {
         setupPinLockView()
         
         pinManager = PinManager(this)
+        intruderDetectionManager = IntruderDetectionManager(this)
+        cameraManager = CameraManager(this)
+        
+        // Lấy thông tin app từ Intent
+        currentAppPackageName = intent.getStringExtra("app_package_name")
+        currentAppName = intent.getStringExtra("app_name")
         
         Log.d(TAG, "AuthenticatePinActivity created")
     }
@@ -161,6 +178,58 @@ class AuthenticatePinActivity : AppCompatActivity() {
         // Prevent going back from authentication screen
         // You can customize this behavior based on your app's requirements
         //moveTaskToBack(true)
+    }
+    
+    /**
+     * Kiểm tra và chụp ảnh kẻ đột nhập nếu cần thiết
+     */
+    private fun checkAndCaptureIntruderPhoto() {
+        // Kiểm tra xem tính năng phát hiện kẻ đột nhập có được bật không
+        if (!intruderDetectionManager.isIntruderDetectionEnabled()) {
+            return
+        }
+        
+        // Kiểm tra xem đã đạt đến ngưỡng số lần thử sai chưa
+        val threshold = intruderDetectionManager.getAttemptThreshold()
+        if (attemptCount >= threshold) {
+            captureIntruderPhoto()
+        }
+    }
+    
+    /**
+     * Chụp ảnh kẻ đột nhập
+     */
+    private fun captureIntruderPhoto() {
+        Log.d(TAG, "Attempting to capture intruder photo")
+        
+        cameraManager.captureIntruderPhoto { imagePath ->
+            // Lưu bản ghi kẻ đột nhập
+            val appPackageName = currentAppPackageName ?: packageName
+            val appName = currentAppName ?: "Unknown App"
+            
+            val intruderRecord = IntruderRecord(
+                imagePath = imagePath,
+                appPackageName = appPackageName,
+                appName = appName,
+                attemptCount = attemptCount
+            )
+            
+            // Sử dụng coroutine để lưu vào database
+            lifecycleScope.launch {
+                try {
+                    intruderDetectionManager.saveIntruderRecord(intruderRecord)
+                    runOnUiThread {
+                        if (imagePath != null) {
+                            Log.d(TAG, "Intruder photo captured and saved: $imagePath")
+                        } else {
+                            Log.d(TAG, "Intruder record saved without photo (camera not available)")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error saving intruder record", e)
+                }
+            }
+        }
     }
     
     override fun onDestroy() {

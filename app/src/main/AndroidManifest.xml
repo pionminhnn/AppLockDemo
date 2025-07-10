@@ -19,6 +19,11 @@
 
     <!-- Quyền nhận broadcast khi khởi động lại máy -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    
+    <!-- Quyền camera để chụp ảnh kẻ đột nhập -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
 
     <application
         android:name=".AppLockApplication"
@@ -58,6 +63,12 @@
             
         <activity
             android:name=".SelectAppsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AppLockDemo" />
+            
+        <activity
+            android:name=".IntruderDetectionActivity"
             android:exported="false"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AppLockDemo" />

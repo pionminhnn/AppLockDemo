@@ -85,6 +85,13 @@ class MainActivity : AppCompatActivity(), AppDetectionService.AppChangeListener 
         testServiceButton?.setOnClickListener {
             testServiceDetection()
         }
+        
+        // Thêm button để mở màn hình phát hiện kẻ đột nhập
+        val intruderDetectionButton = findViewById<Button>(R.id.btnIntruderDetection)
+        intruderDetectionButton?.setOnClickListener {
+            val intent = Intent(this, IntruderDetectionActivity::class.java)
+            startActivity(intent)
+        }
     }
     
     override fun onResume() {

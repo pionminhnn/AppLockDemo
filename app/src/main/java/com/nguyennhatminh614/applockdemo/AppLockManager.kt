@@ -91,12 +91,17 @@ class AppLockManager private constructor() : Application.ActivityLifecycleCallba
      * Manually trigger PIN authentication
      * Useful for testing or manual app lock
      */
-    fun lockApp(context: Context) {
+    fun lockApp(context: Context, appPackageName: String? = null, appName: String? = null) {
         val pinManager = PinManager(context)
         
         if (pinManager.isPinSet()) {
             val intent = Intent(context, AuthenticatePinActivity::class.java)
             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            
+            // Truyền thông tin app nếu có
+            appPackageName?.let { intent.putExtra("app_package_name", it) }
+            appName?.let { intent.putExtra("app_name", it) }
+            
             context.startActivity(intent)
         } else {
             // No PIN set, redirect to setup
