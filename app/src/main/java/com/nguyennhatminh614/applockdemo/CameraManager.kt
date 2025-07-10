@@ -15,6 +15,8 @@ import android.media.ImageReader
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
+import android.util.Size
+import android.hardware.camera2.CameraManager
 import androidx.core.content.ContextCompat
 import java.io.File
 import java.io.FileOutputStream
@@ -34,8 +36,8 @@ class CameraManager(private val context: Context) {
     
     companion object {
         private const val TAG = "CameraManager"
-        private const val IMAGE_WIDTH = 1080
-        private const val IMAGE_HEIGHT = 1920
+        private const val IMAGE_WIDTH = 640
+        private const val IMAGE_HEIGHT = 480
     }
     
     /**
@@ -98,8 +100,18 @@ class CameraManager(private val context: Context) {
                 return
             }
             
-            // Tạo ImageReader
-            imageReader = ImageReader.newInstance(IMAGE_WIDTH, IMAGE_HEIGHT, ImageFormat.JPEG, 1)
+            // Lấy kích thước ảnh được hỗ trợ
+            val supportedSize = getSupportedImageSize(cameraManager, frontCameraId)
+            
+            // Tạo ImageReader với kích thước được hỗ trợ
+            imageReader = ImageReader.newInstance(
+                supportedSize.width, 
+                supportedSize.height, 
+                ImageFormat.JPEG, 
+                1
+            )
+            
+            Log.d(TAG, "Using image size: ${supportedSize.width}x${supportedSize.height}")
             
             val readerListener = ImageReader.OnImageAvailableListener { reader ->
                 val image = reader.acquireLatestImage()
@@ -141,7 +153,7 @@ class CameraManager(private val context: Context) {
         }
     }
     
-    private fun getFrontCameraId(cameraManager: android.hardware.camera2.CameraManager): String? {
+    private fun getFrontCameraId(cameraManager: CameraManager): String? {
         return try {
             val cameraIds = cameraManager.cameraIdList
             for (cameraId in cameraIds) {
@@ -158,6 +170,34 @@ class CameraManager(private val context: Context) {
         }
     }
     
+    private fun getSupportedImageSize(cameraManager: CameraManager, cameraId: String): Size {
+        return try {
+            val characteristics = cameraManager.getCameraCharacteristics(cameraId)
+            val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            val sizes = map?.getOutputSizes(ImageFormat.JPEG)
+            
+            if (sizes != null && sizes.isNotEmpty()) {
+                // Tìm kích thước phù hợp (không quá lớn để tránh lỗi memory)
+                for (size in sizes) {
+                    if (size.width <= 1920 && size.height <= 1080) {
+                        Log.d(TAG, "Selected size: ${size.width}x${size.height}")
+                        return size
+                    }
+                }
+                // Nếu không tìm thấy kích thước phù hợp, dùng kích thước nhỏ nhất
+                val smallestSize = sizes.minByOrNull { it.width * it.height }
+                Log.d(TAG, "Using smallest size: ${smallestSize?.width}x${smallestSize?.height}")
+                return smallestSize ?: Size(IMAGE_WIDTH, IMAGE_HEIGHT)
+            }
+            
+            // Fallback về kích thước mặc định
+            Size(IMAGE_WIDTH, IMAGE_HEIGHT)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting supported image size", e)
+            Size(IMAGE_WIDTH, IMAGE_HEIGHT)
+        }
+    }
+    
     private fun createCaptureSession() {
         try {
             val surface = imageReader?.surface
@@ -171,7 +211,7 @@ class CameraManager(private val context: Context) {
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(session: CameraCaptureSession) {
                         captureSession = session
-                        captureStillPicture()
+                        startPreviewAndCapture()
                     }
                     
                     override fun onConfigureFailed(session: CameraCaptureSession) {
@@ -186,6 +226,37 @@ class CameraManager(private val context: Context) {
         }
     }
     
+    private fun startPreviewAndCapture() {
+        try {
+            val surface = imageReader?.surface
+            if (surface == null) {
+                Log.e(TAG, "ImageReader surface is null")
+                return
+            }
+            
+            // Tạo preview request để camera ổn định trước
+            val previewBuilder = cameraDevice?.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
+            previewBuilder?.addTarget(surface)
+            
+            // Cài đặt auto focus và auto exposure
+            previewBuilder?.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+            previewBuilder?.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+            previewBuilder?.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
+            previewBuilder?.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+            
+            // Bắt đầu preview để camera ổn định
+            captureSession?.setRepeatingRequest(previewBuilder?.build()!!, null, backgroundHandler)
+            
+            // Đợi một chút để camera ổn định rồi chụp ảnh
+            backgroundHandler?.postDelayed({
+                captureStillPicture()
+            }, 1500) // Đợi 1.5 giây
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting preview", e)
+        }
+    }
+    
     private fun captureStillPicture() {
         try {
             val surface = imageReader?.surface
@@ -194,6 +265,9 @@ class CameraManager(private val context: Context) {
                 return
             }
             
+            // Dừng preview trước khi chụp
+            captureSession?.stopRepeating()
+            
             val captureBuilder = cameraDevice?.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             captureBuilder?.addTarget(surface)
 
@@ -201,6 +275,13 @@ class CameraManager(private val context: Context) {
             captureBuilder?.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
             captureBuilder?.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
             captureBuilder?.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
+            captureBuilder?.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+            
+            // Cài đặt chất lượng JPEG cao nhất
+            captureBuilder?.set(CaptureRequest.JPEG_QUALITY, 100.toByte())
+            
+            // Cài đặt flash mode (tắt flash cho camera trước)
+            captureBuilder?.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
             
             val captureCallback = object : CameraCaptureSession.CaptureCallback() {
                 override fun onCaptureCompleted(
@@ -216,10 +297,10 @@ class CameraManager(private val context: Context) {
                     request: CaptureRequest,
                     failure: CaptureFailure
                 ) {
-                    Log.e(TAG, "Photo capture failed")
+                    Log.e(TAG, "Photo capture failed: ${failure.reason}")
                 }
             }
-            captureSession?.setRepeatingRequest(captureBuilder?.build()!!, null, backgroundHandler)
+            
             captureSession?.capture(captureBuilder?.build()!!, captureCallback, backgroundHandler)
             
         } catch (e: Exception) {
