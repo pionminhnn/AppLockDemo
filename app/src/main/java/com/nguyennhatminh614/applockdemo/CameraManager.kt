@@ -3,41 +3,33 @@ package com.nguyennhatminh614.applockdemo
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.ImageFormat
-import android.hardware.camera2.CameraCaptureSession
-import android.hardware.camera2.CameraCharacteristics
-import android.hardware.camera2.CameraDevice
-import android.hardware.camera2.CaptureFailure
-import android.hardware.camera2.CaptureRequest
-import android.hardware.camera2.TotalCaptureResult
-import android.media.Image
-import android.media.ImageReader
-import android.os.Handler
-import android.os.HandlerThread
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.util.Log
-import android.util.Size
-import android.hardware.camera2.CameraManager
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.LifecycleOwner
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.nio.ByteBuffer
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /**
- * Manager để xử lý việc chụp ảnh bằng camera trước
+ * Manager để xử lý việc chụp ảnh bằng camera trước sử dụng CameraX
  */
 class CameraManager(private val context: Context) {
     
-    private var cameraDevice: CameraDevice? = null
-    private var captureSession: CameraCaptureSession? = null
-    private var imageReader: ImageReader? = null
-    private var backgroundHandler: Handler? = null
-    private var backgroundThread: HandlerThread? = null
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var imageCapture: ImageCapture? = null
+    private var cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     
     companion object {
         private const val TAG = "CameraManager"
-        private const val IMAGE_WIDTH = 640
-        private const val IMAGE_HEIGHT = 480
     }
     
     /**
@@ -55,17 +47,9 @@ class CameraManager(private val context: Context) {
      */
     fun hasFrontCamera(): Boolean {
         return try {
-            val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
-            val cameraIds = cameraManager.cameraIdList
-            
-            for (cameraId in cameraIds) {
-                val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-                val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
-                if (facing == CameraCharacteristics.LENS_FACING_FRONT) {
-                    return true
-                }
-            }
-            false
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+            val cameraProvider = cameraProviderFuture.get()
+            cameraProvider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA)
         } catch (e: Exception) {
             Log.e(TAG, "Error checking front camera", e)
             false
@@ -73,9 +57,9 @@ class CameraManager(private val context: Context) {
     }
     
     /**
-     * Chụp ảnh bằng camera trước
+     * Chụp ảnh bằng camera trước sử dụng CameraX
      */
-    fun captureIntruderPhoto(callback: (String?) -> Unit) {
+    fun captureIntruderPhoto(lifecycleOwner: LifecycleOwner, callback: (String?) -> Unit) {
         if (!hasCameraPermission()) {
             Log.e(TAG, "Camera permission not granted")
             callback(null)
@@ -88,64 +72,18 @@ class CameraManager(private val context: Context) {
             return
         }
         
-        startBackgroundThread()
-        
         try {
-            val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as android.hardware.camera2.CameraManager
-            val frontCameraId = getFrontCameraId(cameraManager)
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
             
-            if (frontCameraId == null) {
-                Log.e(TAG, "Front camera ID not found")
-                callback(null)
-                return
-            }
-            
-            // Lấy kích thước ảnh được hỗ trợ
-            val supportedSize = getSupportedImageSize(cameraManager, frontCameraId)
-            
-            // Tạo ImageReader với kích thước được hỗ trợ
-            imageReader = ImageReader.newInstance(
-                supportedSize.width, 
-                supportedSize.height, 
-                ImageFormat.JPEG, 
-                1
-            )
-            
-            Log.d(TAG, "Using image size: ${supportedSize.width}x${supportedSize.height}")
-            
-            val readerListener = ImageReader.OnImageAvailableListener { reader ->
-                val image = reader.acquireLatestImage()
-                val filePath = saveImageToFile(image)
-                image.close()
-
-                callback(filePath)
-
-                // Cleanup
-                closeCamera()
-                stopBackgroundThread()
-            }
-            
-            imageReader?.setOnImageAvailableListener(readerListener, backgroundHandler)
-            
-            // Mở camera
-            cameraManager.openCamera(frontCameraId, object : CameraDevice.StateCallback() {
-                override fun onOpened(camera: CameraDevice) {
-                    cameraDevice = camera
-                    createCaptureSession()
-                }
-                
-                override fun onDisconnected(camera: CameraDevice) {
-                    camera.close()
-                    cameraDevice = null
-                }
-                
-                override fun onError(camera: CameraDevice, error: Int) {
-                    camera.close()
-                    cameraDevice = null
-                    Log.e(TAG, "Camera error: $error")
+            cameraProviderFuture.addListener({
+                try {
+                    cameraProvider = cameraProviderFuture.get()
+                    startCameraAndCapture(lifecycleOwner, callback)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error getting camera provider", e)
                     callback(null)
                 }
-            }, backgroundHandler)
+            }, ContextCompat.getMainExecutor(context))
             
         } catch (e: Exception) {
             Log.e(TAG, "Error capturing photo", e)
@@ -153,215 +91,174 @@ class CameraManager(private val context: Context) {
         }
     }
     
-    private fun getFrontCameraId(cameraManager: CameraManager): String? {
-        return try {
-            val cameraIds = cameraManager.cameraIdList
-            for (cameraId in cameraIds) {
-                val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-                val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
-                if (facing == CameraCharacteristics.LENS_FACING_FRONT) {
-                    return cameraId
-                }
-            }
-            null
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting front camera ID", e)
-            null
-        }
-    }
-    
-    private fun getSupportedImageSize(cameraManager: CameraManager, cameraId: String): Size {
-        return try {
-            val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-            val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-            val sizes = map?.getOutputSizes(ImageFormat.JPEG)
-            
-            if (sizes != null && sizes.isNotEmpty()) {
-                // Tìm kích thước phù hợp (không quá lớn để tránh lỗi memory)
-                for (size in sizes) {
-                    if (size.width <= 1920 && size.height <= 1080) {
-                        Log.d(TAG, "Selected size: ${size.width}x${size.height}")
-                        return size
-                    }
-                }
-                // Nếu không tìm thấy kích thước phù hợp, dùng kích thước nhỏ nhất
-                val smallestSize = sizes.minByOrNull { it.width * it.height }
-                Log.d(TAG, "Using smallest size: ${smallestSize?.width}x${smallestSize?.height}")
-                return smallestSize ?: Size(IMAGE_WIDTH, IMAGE_HEIGHT)
-            }
-            
-            // Fallback về kích thước mặc định
-            Size(IMAGE_WIDTH, IMAGE_HEIGHT)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting supported image size", e)
-            Size(IMAGE_WIDTH, IMAGE_HEIGHT)
-        }
-    }
-    
-    private fun createCaptureSession() {
+    private fun startCameraAndCapture(lifecycleOwner: LifecycleOwner, callback: (String?) -> Unit) {
         try {
-            val surface = imageReader?.surface
-            if (surface == null) {
-                Log.e(TAG, "ImageReader surface is null")
+            // Unbind tất cả use cases trước
+            cameraProvider?.unbindAll()
+            
+            // Chọn camera trước
+            val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
+            
+            // Cấu hình ImageCapture
+            imageCapture = ImageCapture.Builder()
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                .setJpegQuality(80)
+                .build()
+            
+            // Bind camera với lifecycle (sử dụng context như LifecycleOwner nếu có thể)
+            if (context is LifecycleOwner) {
+                cameraProvider?.bindToLifecycle(
+                    context,
+                    cameraSelector,
+                    imageCapture
+                )
+            } else {
+                // Nếu context không phải LifecycleOwner, tạo một lifecycle đơn giản
+                Log.w(TAG, "Context is not LifecycleOwner, using alternative approach")
+                bindCameraWithoutLifecycle(lifecycleOwner, cameraSelector, callback)
                 return
             }
-            
-            cameraDevice?.createCaptureSession(
-                listOf(surface),
-                object : CameraCaptureSession.StateCallback() {
-                    override fun onConfigured(session: CameraCaptureSession) {
-                        captureSession = session
-                        startPreviewAndCapture()
-                    }
-                    
-                    override fun onConfigureFailed(session: CameraCaptureSession) {
-                        Log.e(TAG, "Capture session configuration failed")
-                    }
-                },
-                backgroundHandler
-            )
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error creating capture session", e)
-        }
-    }
-    
-    private fun startPreviewAndCapture() {
-        try {
-            val surface = imageReader?.surface
-            if (surface == null) {
-                Log.e(TAG, "ImageReader surface is null")
-                return
-            }
-            
-            // Tạo preview request để camera ổn định trước
-            val previewBuilder = cameraDevice?.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
-            previewBuilder?.addTarget(surface)
-            
-            // Cài đặt auto focus và auto exposure
-            previewBuilder?.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
-            previewBuilder?.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
-            previewBuilder?.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
-            previewBuilder?.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
-            
-            // Bắt đầu preview để camera ổn định
-            captureSession?.setRepeatingRequest(previewBuilder?.build()!!, null, backgroundHandler)
             
             // Đợi một chút để camera ổn định rồi chụp ảnh
-            backgroundHandler?.postDelayed({
-                captureStillPicture()
-            }, 1500) // Đợi 1.5 giây
+            cameraExecutor.execute {
+                Thread.sleep(1500) // Đợi 1.5 giây
+                capturePhoto(callback)
+            }
             
         } catch (e: Exception) {
-            Log.e(TAG, "Error starting preview", e)
+            Log.e(TAG, "Error starting camera", e)
+            callback(null)
         }
     }
     
-    private fun captureStillPicture() {
+    private fun bindCameraWithoutLifecycle(lifecycleOwner: LifecycleOwner, cameraSelector: CameraSelector, callback: (String?) -> Unit) {
         try {
-            val surface = imageReader?.surface
-            if (surface == null) {
-                Log.e(TAG, "ImageReader surface is null")
-                return
+            // Sử dụng cách tiếp cận đơn giản hơn cho trường hợp không có LifecycleOwner
+            cameraProvider?.bindToLifecycle(
+                lifecycleOwner,
+                cameraSelector,
+                imageCapture
+            )
+            
+            // Đợi một chút để camera ổn định rồi chụp ảnh
+            cameraExecutor.execute {
+                Thread.sleep(1500) // Đợi 1.5 giây
+                capturePhoto(callback)
             }
             
-            // Dừng preview trước khi chụp
-            captureSession?.stopRepeating()
-            
-            val captureBuilder = cameraDevice?.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
-            captureBuilder?.addTarget(surface)
-
-            // Cài đặt auto focus và auto exposure
-            captureBuilder?.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
-            captureBuilder?.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
-            captureBuilder?.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
-            captureBuilder?.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
-            
-            // Cài đặt chất lượng JPEG cao nhất
-            captureBuilder?.set(CaptureRequest.JPEG_QUALITY, 100.toByte())
-            
-            // Cài đặt flash mode (tắt flash cho camera trước)
-            captureBuilder?.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
-            
-            val captureCallback = object : CameraCaptureSession.CaptureCallback() {
-                override fun onCaptureCompleted(
-                    session: CameraCaptureSession,
-                    request: CaptureRequest,
-                    result: TotalCaptureResult
-                ) {
-                    Log.d(TAG, "Photo captured successfully")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error binding camera without lifecycle", e)
+            callback(null)
+        }
+    }
+    
+    private fun capturePhoto(callback: (String?) -> Unit) {
+        val imageCapture = imageCapture ?: run {
+            Log.e(TAG, "ImageCapture is null")
+            callback(null)
+            return
+        }
+        
+        // Tạo thư mục lưu ảnh
+        val intruderDir = File(context.filesDir, "intruder_photos")
+        if (!intruderDir.exists()) {
+            intruderDir.mkdirs()
+        }
+        
+        // Tạo tên file với timestamp
+        val fileName = "intruder_${System.currentTimeMillis()}.jpg"
+        val outputFile = File(intruderDir, fileName)
+        
+        val outputFileOptions = ImageCapture.OutputFileOptions.Builder(outputFile).build()
+        
+        imageCapture.takePicture(
+            outputFileOptions,
+            cameraExecutor,
+            object : ImageCapture.OnImageSavedCallback {
+                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    Log.d(TAG, "Photo captured successfully: ${outputFile.absolutePath}")
+                    
+                    // Xử lý xoay ảnh nếu cần
+                    val processedPath = processAndRotateImage(outputFile.absolutePath)
+                    
+                    // Cleanup camera
+                    cleanup()
+                    
+                    callback(processedPath)
                 }
                 
-                override fun onCaptureFailed(
-                    session: CameraCaptureSession,
-                    request: CaptureRequest,
-                    failure: CaptureFailure
-                ) {
-                    Log.e(TAG, "Photo capture failed: ${failure.reason}")
+                override fun onError(exception: ImageCaptureException) {
+                    Log.e(TAG, "Photo capture failed: ${exception.message}", exception)
+                    cleanup()
+                    callback(null)
                 }
             }
-            
-            captureSession?.capture(captureBuilder?.build()!!, captureCallback, backgroundHandler)
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "Error capturing still picture", e)
-        }
+        )
+    }
+
+    fun rotateBitmapVertical(bitmap: Bitmap): Bitmap {
+        val matrix = Matrix()
+        matrix.postRotate(-90f) // Xoay 90 độ theo chiều kim đồng hồ
+
+        return Bitmap.createBitmap(
+            bitmap,
+            0, 0,
+            bitmap.width,
+            bitmap.height,
+            matrix,
+            true
+        )
     }
     
-    private fun saveImageToFile(image: Image): String? {
+    private fun processAndRotateImage(imagePath: String): String? {
         return try {
-            val buffer: ByteBuffer = image.planes[0].buffer
-            val bytes = ByteArray(buffer.remaining())
-            buffer.get(bytes)
-
-            // Tạo thư mục lưu ảnh
-            val intruderDir = File(context.filesDir, "intruder_photos")
-            if (!intruderDir.exists()) {
-                intruderDir.mkdirs()
+            val bitmap = BitmapFactory.decodeFile(imagePath)
+            if (bitmap == null) {
+                Log.e(TAG, "Failed to decode image from path: $imagePath")
+                return imagePath
             }
-            
-            // Tạo tên file với timestamp
-            val fileName = "intruder_${System.currentTimeMillis()}.jpg"
-            val file = File(intruderDir, fileName)
-            
-            val output = FileOutputStream(file)
-            output.write(bytes)
+
+            val finalBitmap = if (bitmap.width > bitmap.height) {
+                rotateBitmapVertical(bitmap)
+            } else bitmap
+
+            val output = FileOutputStream(imagePath)
+            finalBitmap.compress(Bitmap.CompressFormat.JPEG, 80, output)
             output.close()
+
+            bitmap.recycle()
+            finalBitmap.recycle()
             
-            Log.d(TAG, "Image saved to: ${file.absolutePath}")
-            file.absolutePath
+            Log.d(TAG, "Image processed: $imagePath")
+            imagePath
             
         } catch (e: IOException) {
-            Log.e(TAG, "Error saving image", e)
-            null
+            Log.e(TAG, "Error processing image", e)
+            imagePath
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing image", e)
+            imagePath
         }
     }
-    
-    private fun startBackgroundThread() {
-        backgroundThread = HandlerThread("CameraBackground")
-        backgroundThread?.start()
-        backgroundHandler = Handler(backgroundThread?.looper!!)
-    }
-    
-    private fun stopBackgroundThread() {
-        backgroundThread?.quitSafely()
+
+    /**
+     * Cleanup camera resources
+     */
+    private fun cleanup() {
         try {
-            backgroundThread?.join()
-            backgroundThread = null
-            backgroundHandler = null
-        } catch (e: InterruptedException) {
-            Log.e(TAG, "Error stopping background thread", e)
+            cameraProvider?.unbindAll()
+            cameraProvider = null
+            imageCapture = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during cleanup", e)
         }
     }
     
-    private fun closeCamera() {
-        captureSession?.close()
-        captureSession = null
-        
-        cameraDevice?.close()
-        cameraDevice = null
-        
-        imageReader?.close()
-        imageReader = null
+    /**
+     * Shutdown executor khi không cần thiết nữa
+     */
+    fun shutdown() {
+        cleanup()
+        cameraExecutor.shutdown()
     }
 }

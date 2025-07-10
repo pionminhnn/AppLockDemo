@@ -202,7 +202,7 @@ class AuthenticatePinActivity : AppCompatActivity() {
     private fun captureIntruderPhoto() {
         Log.d(TAG, "Attempting to capture intruder photo")
         
-        cameraManager.captureIntruderPhoto { imagePath ->
+        cameraManager.captureIntruderPhoto(this@AuthenticatePinActivity) { imagePath ->
             // Lưu bản ghi kẻ đột nhập
             val appPackageName = currentAppPackageName ?: packageName
             val appName = currentAppName ?: "Unknown App"
